@@ -1,0 +1,49 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId}/transactions/{transactionId} {
+      function isOwner() {
+        return request.auth != null && request.auth.uid == userId;
+      }
+
+      function validEntry() {
+        return request.resource.data.kind == "entry"
+          && request.resource.data.keys().hasOnly([
+            "kind", "entryId", "type", "title", "category", "amount", "date", "updatedAt"
+          ])
+          && request.resource.data.entryId is string
+          && request.resource.data.type in ["income", "expense"]
+          && request.resource.data.title is string
+          && request.resource.data.title.size() <= 70
+          && request.resource.data.category is string
+          && (
+            (request.resource.data.type == "income"
+              && request.resource.data.category in [
+                "salary", "extraIncome", "business", "investments", "gifts", "otherIncome"
+              ])
+            || (request.resource.data.type == "expense"
+              && request.resource.data.category in [
+                "food", "transport", "housing", "bills", "health", "education",
+                "shopping", "entertainment", "debt", "otherExpense"
+              ])
+          )
+          && request.resource.data.amount is number
+          && request.resource.data.amount > 0
+          && request.resource.data.date is string
+          && request.resource.data.date.matches("^\\d{4}-\\d{2}-\\d{2}$")
+          && request.resource.data.updatedAt is number;
+      }
+
+      function validDeletion() {
+        return request.resource.data.kind == "deleted"
+          && request.resource.data.keys().hasOnly(["kind", "entryId", "updatedAt"])
+          && request.resource.data.entryId is string
+          && request.resource.data.updatedAt is number;
+      }
+
+      allow read: if isOwner();
+      allow create, update: if isOwner() && (validEntry() || validDeletion());
+      allow delete: if isOwner();
+    }
+  }
+}
